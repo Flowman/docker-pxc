@@ -41,7 +41,7 @@ file_env() {
 }
 
 _check_config() {
-	toRun=( "$@" --verbose --help )
+	toRun=( "$@" --verbose --wsrep_provider= --help )
 	if ! errors="$("${toRun[@]}" 2>&1 >/dev/null)"; then
 		cat >&2 <<-EOM
 
@@ -55,13 +55,11 @@ _check_config() {
 }
 
 _datadir() {
-	"$@" --verbose --help 2>/dev/null | awk '$1 == "datadir" { print $2; exit }'
+	"$@" --verbose --wsrep_provider= --help 2>/dev/null | awk '$1 == "datadir" { print $2; exit }'
 }
 
 # allow the container to be started with `--user`
 if [ "$1" = 'mysqld' -a -z "$wantHelp" -a "$(id -u)" = '0' ]; then
-    chown -R mysql:mysql /run/mysqld
-	chown -R mysql:mysql /var/lib/mysql
 	_check_config "$@"
 	DATADIR="$(_datadir "$@")"
 	mkdir -p "$DATADIR"
@@ -70,6 +68,13 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" -a "$(id -u)" = '0' ]; then
 fi
 
 if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
+
+
+	if [ -z "$CLUSTER_NAME" ]; then
+		echo >&2 'error: you need to specify CLUSTER_NAME'
+		exit 1
+	fi
+
 	# still need to check config, container may have started with --user
 	_check_config "$@"
 	# Get config
@@ -90,9 +95,6 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 		fi
 
 		mkdir -p "$DATADIR"
-		chown -R mysql:mysql "$DATADIR"
-
-		rm "$DATADIR"*
 
 		echo 'Initializing database'
 		"$@" --initialize-insecure
@@ -105,7 +107,7 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 			echo 'Certificates initialized'
 		fi
 
-		"$@" --skip-networking --socket=/run/mysqld/mysqld.sock &
+		"$@" --skip-networking --wsrep_provider= --socket=/run/mysqld/mysqld.sock &
 		pid="$!"
 
 		mysql=( mysql --protocol=socket -uroot -hlocalhost --socket=/run/mysqld/mysqld.sock)
@@ -209,4 +211,44 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 	fi
 fi
 
-exec "$@"
+echo
+echo 'Registering in the discovery service'
+echo
+
+export DISCOVERY_SERVICE=etcd.rancher.internal:${ETCD_PORT:-2379}
+
+function join { local IFS="$1"; shift; echo "$*"; }
+
+# Read the list of registered IP addresses
+set +e
+
+ipaddr=$(hostname -i | awk ' { print $1 } ')
+hostname=$(hostname)
+
+curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/queue/$CLUSTER_NAME" -XPUT -d value=$ipaddr -d ttl=60
+
+#get list of IP from queue
+i=$(curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/queue/$CLUSTER_NAME" | jq -r '.node.nodes[].value')
+echo $i
+# this remove my ip from the list
+i1="${i[@]/$ipaddr}"
+echo $i1
+# Register the current IP in the discovery service
+# key set to expire in 30 sec. There is a cronjob that should update them regularly
+curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/$ipaddr/ipaddr" -XPUT -d value="$ipaddr" -d ttl=30
+curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/$ipaddr/hostname" -XPUT -d value="$hostname" -d ttl=30
+curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/$ipaddr" -XPUT -d ttl=30 -d dir=true -d prevExist=true
+
+i=$(curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/?quorum=true" | jq -r '.node.nodes[]?.key' | awk -F'/' '{print $(NF)}')
+echo $i
+# this remove my ip from the list
+i2="${i[@]/$ipaddr}"
+echo $i2
+cluster_ips=$(join , $i1 $i2)
+
+echo "Joining cluster $cluster_ips"
+
+/usr/bin/clustercheckcron clustercheckuser clustercheckpassword! 1 /var/log/mysql/clustercheck.log 1 &
+set -e
+
+exec "$@" --wsrep_cluster_name=$CLUSTER_NAME --wsrep_cluster_address="gcomm://$cluster_ips" --wsrep_node_address="$ipaddr"
