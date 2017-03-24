@@ -1,0 +1,31 @@
+[mysqld]
+wsrep_provider = /usr/lib/galera3/libgalera_smm.so
+bind_address = 0.0.0.0
+
+# SST method
+wsrep_sst_method = xtrabackup-v2
+
+# In order for Galera to work correctly binlog format should be ROW
+binlog_format = ROW
+
+# MyISAM storage engine has only experimental support
+default_storage_engine = InnoDB
+
+# This changes how InnoDB autoincrement locks are managed and is a requirement for Galera
+innodb_autoinc_lock_mode = 2
+
+#pxc_strict_mode allowed values: DISABLED,PERMISSIVE,ENFORCING,MASTER
+pxc_strict_mode=ENFORCING
+
+innodb_buffer_pool_size         = 512M
+innodb_doublewrite              = 0
+innodb_flush_log_at_trx_commit  = 0
+innodb_flush_method             = O_DIRECT
+innodb_file_per_table           = 1
+innodb_log_file_size            = 128M
+innodb_log_buffer_size          = 64M
+innodb_support_xa               = 0
+query_cache_size                = 0
+query_cache_type                = 0
+sync_binlog                     = 0
+max_connections                 = 1000

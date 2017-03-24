@@ -21,26 +21,13 @@ done
 echo "Starting pxc..."
 
 if [ "$#" -eq "0" ]; then
-    leader="false"
 
-    ./giddyup leader check
-    if [ "$?" -eq "0" ]; then
-        leader="true"
-    fi
+    set -- mysqld --wsrep_cluster_address=gcomm://$(./giddyup ip stringify)
 
-    set -- mysqld --wsrep_cluster_address=gcomm://$(./giddyup ip stringify)?pc.wait_prim=no
-    if [ "${leader}" = "true" ]; then
-        set -- mysqld --wsrep-new-cluster --wsrep_cluster_address=gcomm://$(./giddyup ip stringify)?pc.wait_prim=no
-    fi
-    touch /opt/rancher/configured
-    if [ "${leader}" = "true" ] && [ ! -f "/opt/rancher/initialized" ]; then
-        set -- mysqld --wsrep-new-cluster --wsrep_cluster_address=gcomm://$(./giddyup ip stringify)?pc.wait_prim=no
-        rm -rf /opt/rancher/configured
+    if [ giddyup leader check ] && [ ! -f "/opt/rancher/initialized" ]; then
+        set -- mysqld --wsrep_cluster_address=gcomm://
         touch /opt/rancher/initialized
-    fi
-
-    ## Incase this is the initial startup.
-    if [ "${leader}" = "false" ]; then
+    else
         random_sleep
     fi
 fi

@@ -10,21 +10,20 @@ RUN \
         curl \
         jq \
         pwgen \
-        bash \
-        tzdata \
-        socat \
-        iproute2 \
         gosu@testing \
     && cd /tmp \
     && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.16-27.19/percona-xtradb-cluster-common-5.7.16-r0.apk" -o "percona-xtradb-cluster-common-5.7.16-r0.apk" \
-    && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.16-27.19/percona-xtradb-cluster-5.7.16-r0.apk" -o "percona-xtradb-cluster-5.7.16-r0.apk" \
+    && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.16-27.19/percona-xtradb-cluster-server-5.7.16-r0.apk" -o "percona-xtradb-cluster-server-5.7.16-r0.apk" \
+    && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.16-27.19/percona-xtradb-cluster-client-5.7.16-r0.apk" -o "percona-xtradb-cluster-client-5.7.16-r0.apk" \
     && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.16-27.19/percona-xtradb-cluster-galera-5.7.16-r0.apk" -o "percona-xtradb-cluster-galera-5.7.16-r0.apk" \
     && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.16-27.19/percona-xtrabackup-2.4.6-r0.apk" -o "percona-xtrabackup-2.4.6-r0.apk" \
+
     && apk add --allow-untrusted \
         percona-xtradb-cluster-common-5.7.16-r0.apk \
-        percona-xtradb-cluster-5.7.16-r0.apk \
+        percona-xtradb-cluster-client-5.7.16-r0.apk \
         percona-xtradb-cluster-galera-5.7.16-r0.apk \
         percona-xtrabackup-2.4.6-r0.apk \
+        percona-xtradb-cluster-server-5.7.16-r0.apk \
 
     && rm -rf /tmp/* \
 
@@ -32,11 +31,12 @@ RUN \
     && curl -SL https://github.com/cloudnautique/giddyup/releases/download/v0.14.0/giddyup -o /opt/rancher/giddyup \
     && chmod +x /opt/rancher/giddyup \
 
-    && sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf \
-    && printf 'skip-host-cache\nskip-name-resolve\n' | awk '{ print } $1 == "[mysqld]" && c == 0 { c = 1; system("cat") }' /etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf > /tmp/mysqld.cnf \
-    && mv /tmp/mysqld.cnf /etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf
+    && sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/my.cnf \
+    && printf 'skip-host-cache\nskip-name-resolve\n' | awk '{ print } $1 == "[mysqld]" && c == 0 { c = 1; system("cat") }' /etc/mysql/my.cnf > /tmp/my.cnf \
+    && mv /tmp/my.cnf /etc/mysql/my.cnf
 
 COPY ./start_pxc /opt/rancher
+COPY ./node.cnf /etc/mysql/conf.d
 COPY ./docker-entrypoint.sh /
 COPY ./clustercheckcron /usr/bin/clustercheckcron
 
