@@ -1,24 +1,60 @@
-[![](https://badge.imagelayers.io/flowman/percona-xtradb-cluster:latest.svg)](https://imagelayers.io/?images=flowman/percona-xtradb-cluster:latest 'Get your own badge on imagelayers.io')
+[![](https://images.microbadger.com/badges/image/flowman/percona-xtradb-cluster:5.7.16-alpine1.svg)](https://microbadger.com/images/flowman/percona-xtradb-cluster:5.7.16-alpine1 "Get your own image badge on microbadger.com")
 
 # What is Percona XtraDB Cluster?
 
-Percona XtraDB Cluster is High Availability and Scalability solution for MySQL Users. Percona XtraDB Cluster provides: Synchronous replication. Transaction either commited on all nodes or none. Multi-master replication.
+Percona XtraDB Cluster is High Availability and Scalability solution for MySQL Users. Percona XtraDB Cluster provides: Synchronous replication. Transaction either committed on all nodes or none. Multi-master replication.
 
 ## Info
 
 This container is not meant to be run standalone as it is part of a [Rancher](http://rancher.com) Catalog item. If it suites your purpose you are more then welcome to use it.
 
+This image is based on the popular Alpine Linux project, available in the alpine official image. Alpine Linux is much smaller than most distribution base images (~5MB), and thus leads to much slimmer images in general.
+
+## Know Issues
+
+[#6214](https://github.com/rancher/rancher/issues/6214) Do by no circumstances ever try to stop the service in rancher as this will kill the cluster and manual step is required to start it up again. PXC add an extra 10 sec delay when receiving a shutdown signal, and rancher uses docker stop that forcefully kills a container after 10 secs.
+
+In case this happens follow these steps to fix it:
+
+1. Stop the service
+2. Check each container /var/lib/mysql/grastate.dat for the highest uuid
+3. Change safe_to_bootstrap to 1 on the container with the highest uuid
+4. Start only this container and check logs that it has bootstrapped successfully
+5. Start the service again
+
+The same issue will occur if trying to scale down the service to only 1 host.
+
+## Requirments
+
+### Discovery service
+
+The cluster will try to register itself in Etcd, so that new nodes can easily find running nodes. This approach give more flexibility over the old rancher metadata that is read-only.
+
+`DISCOVERY_SERVICE` optional `DISCOVERY_SERVICE_PORT`
+
+This variable is mandatory and specifies the IP address or linked service hostname to the Etcd host.
+
+`CLUSTER_NAME`
+
+This variable is mandatory and specifies the cluster to join and register in Etcd.
+
+## Recommendation
+
+For persistent storage mount the `source:/var/lib/mysql` folder so you don't lose your data and for easy recovery when everything goes sideways.
+
+Copy `node.cnf` and make required changes, and than mount it back to `source/node.cnf:/etc/mysql/conf.d/node.cnf`
+
 ## Environment Variables
 
 When you start the pxc image, you can adjust the configuration of the pxc instance by passing one or more environment variables on the docker run command line. Do note that none of the variables below will have any effect if you start the container with a data directory that already contains a database: any pre-existing database will always be left untouched on container startup.
 
-`MYSQL_ROOT_PASSWORD`
+`MYSQL_ROOT_PASSWORD` or `MYSQL_RANDOM_ROOT_PASSWORD`
 
-This variable is mandatory and specifies the password that will be set for the root superuser account. 
+This variable is mandatory and specifies the password that will be set for the root superuser account.
 
 `PXC_SST_PASSWORD`
 
-This variable is mandatory and specifies the password that will be set for the sst account. 
+This variable is mandatory and specifies the password that will be set for the sst account.
 
 `MYSQL_DATABASE`
 
@@ -41,44 +77,50 @@ This is an optional variable. Set to yes to allow the container to be started wi
 Example Rancher docker-compose stack
 
 ```yaml
-pxc:
-  image: flowman/percona-xtradb-cluster-confd:v0.2.0
-  labels:
-    io.rancher.sidekicks: pxc-clustercheck,pxc-server,pxc-data
-    io.rancher.scheduler.affinity:container_label_soft_ne: io.rancher.stack_service.name=$${stack_name}/$${service_name}
-  volumes_from:
-    - 'pxc-data'
-pxc-clustercheck:
-  image: flowman/percona-xtradb-cluster-clustercheck:v2.0
-  net: "container:pxc"
-pxc-server:
-  image: flowman/percona-xtradb-cluster:5.6.28-1
-  net: "container:pxc"
-  environment:
-    MYSQL_ROOT_PASSWORD: "password"
-    PXC_SST_PASSWORD: "password"
-  volumes_from:
-    - 'pxc-data'
-  entrypoint: bash -x /opt/rancher/start_pxc
-pxc-data:
-  image: flowman/percona-xtradb-cluster:5.6.28-1
-  net: none
-  environment:
-    MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-  volumes:
-    - /var/lib/mysql
-    - /etc/mysql/conf.d
+version: '2'
+
+services:
+  pxc:
+    image: flowman/percona-xtradb-cluster:5.7.16-alpine1
+    environment:
+      CLUSTER_NAME: pxc-cluster
+      DISCOVERY_SERVICE: etcd
+      MYSQL_ROOT_PASSWORD: password
+      PXC_SST_PASSWORD: s3cretPass
+    entrypoint:
+    - /opt/rancher/start_etcd
+    external_links:
+    - etcd-ha/etcd:etcd
+    volumes_from:
+    - pxc-data
+    labels:
+      io.rancher.scheduler.affinity:container_label_soft_ne: io.rancher.stack_service.name=$${stack_name}/$${service_name}
+      io.rancher.sidekicks: pxc-clustercheck,pxc-data
+  pxc-data:
+    image: flowman/percona-xtradb-cluster:5.7.16-alpine1
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+    network_mode: none
+    volumes:
     - /docker-entrypoint-initdb.d
-  command: /bin/true
-  labels:
-    io.rancher.container.start_once: true
+    - /etc/mysql/conf.d
+    - /etc/mysql/percona-xtradb-cluster.conf.d
+    - /var/lib/mysql
+    command:
+    - /bin/true
+    labels:
+      io.rancher.container.start_once: 'true'
+  pxc-clustercheck:
+    image: flowman/percona-xtradb-cluster-clustercheck:v2.0
+    network_mode: container:pxc
+    volumes_from:
+    - pxc-data
 ```
 
 Example rancher-compose for monitoring pxc
 
 ```yaml
 pxc:
-  scale: 3
   health_check:
     port: 8000
     interval: 2000
@@ -86,22 +128,34 @@ pxc:
     strategy: none
     request_line: GET / HTTP/1.1
     healthy_threshold: 2
-    response_timeout: 2000  
-  metadata:
-    mysqld: |
-      innodb_buffer_pool_size=512M
-      innodb_doublewrite=0
-      innodb_flush_log_at_trx_commit=0
-      innodb_file_per_table=1
-      innodb_log_file_size=128M
-      innodb_log_buffer_size=64M
-      innodb_support_xa=0
-      query_cache_size=0
-      query_cache_type=0
-      sync_binlog=0
-      max_connections=1000
-      wsrep_sst_auth=sstuser:password
-```      
+    response_timeout: 2000
+```
+
+Example docker-compose file
+
+```yaml
+version: '2'
+
+services:
+  pxc:
+    image: flowman/percona-xtradb-cluster:5.7.16-alpine1
+    environment:
+      CLUSTER_NAME: pxc-cluster
+      DISCOVERY_SERVICE: etcd
+      MYSQL_ROOT_PASSWORD: password
+      PXC_SST_PASSWORD: s3cretPass
+    entrypoint: /opt/rancher/start_etcd
+    volumes:
+    - /docker-entrypoint-initdb.d
+    - /etc/mysql/conf.d
+    - /etc/mysql/percona-xtradb-cluster.conf.d
+    - /var/lib/mysql
+  pxc-clustercheck:
+    image: flowman/percona-xtradb-cluster-clustercheck:v2.0
+    network_mode: "service:pxc"
+    volumes_from:
+    - pxc
+```
 
 ## Build
 

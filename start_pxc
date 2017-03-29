@@ -12,23 +12,24 @@ random_sleep()
 
 ./giddyup service wait scale
 
-PXC_CONF='/etc/mysql/conf.d/001-pxc.cnf'
+IP=$(giddyup ip myip)
+META_URL="http://rancher-metadata.rancher.internal/2015-12-19"
+CLUSTER_NAME=$(curl -sS ${META_URL}/self/stack/name)
 
-echo "Waiting for Config..."
-while [ ! -f "${PXC_CONF}" ]; do
-   sleep 5
-done
+echo
 echo "Starting pxc..."
+echo
 
 if [ "$#" -eq "0" ]; then
 
-    set -- mysqld --wsrep_cluster_address=gcomm://$(./giddyup ip stringify)
+    set -- mysqld --wsrep_cluster_name=$CLUSTER_NAME --wsrep_cluster_address=gcomm://$(./giddyup ip stringify) --wsrep_node_address="$IP" --wsrep_sst_auth="sstuser:$PXC_SST_PASSWORD"
 
     if [ giddyup leader check ] && [ ! -f "/opt/rancher/initialized" ]; then
-        set -- mysqld --wsrep_cluster_address=gcomm://
+        set -- mysqld --wsrep_cluster_name=$CLUSTER_NAME --wsrep_cluster_address=gcomm:// --wsrep_node_address="$IP" --wsrep_sst_auth="sstuser:$PXC_SST_PASSWORD"
         touch /opt/rancher/initialized
     else
         random_sleep
+        export CLUSTER_JOIN=true
     fi
 fi
 

@@ -69,12 +69,6 @@ fi
 
 if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 
-
-	if [ -z "$CLUSTER_NAME" ]; then
-		echo >&2 'error: you need to specify CLUSTER_NAME'
-		exit 1
-	fi
-
 	# still need to check config, container may have started with --user
 	_check_config "$@"
 	# Get config
@@ -85,7 +79,7 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 
 	if [ -z "$CLUSTER_JOIN" ]; then
 
-		if [ ! -d "$DATADIR/mysql" ] && [ ! -f "/opt/rancher/configured" ]; then
+		if [ ! -d "$DATADIR/mysql" ]; then
 			file_env 'MYSQL_ROOT_PASSWORD'
 			if [ -z "$MYSQL_ROOT_PASSWORD" -a -z "$MYSQL_ALLOW_EMPTY_PASSWORD" -a -z "$MYSQL_RANDOM_ROOT_PASSWORD" ]; then
 				echo >&2 'error: database is uninitialized and password option is not specified '
@@ -217,55 +211,4 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 	fi
 fi
 
-if [ -z "$DISCOVERY_SERVICE" ]; then
-	cluster_ips=$CLUSTER_JOIN
-else
-	echo
-	echo 'Registering in the discovery service'
-	echo
-
-	export DISCOVERY_SERVICE=etcd.rancher.internal:${ETCD_PORT:-2379}
-
-	function join { local IFS="$1"; shift; echo "$*"; }
-
-	# Read the list of registered IP addresses
-	set +e
-
-	ipaddr=$(hostname -i | awk ' { print $1 } ')
-	hostname=$(hostname)
-
-	curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/queue/$CLUSTER_NAME" -XPOST -d value=$ipaddr -d ttl=60
-
-	#get list of IP from queue
-	i=$(curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/queue/$CLUSTER_NAME" | jq -r '.node.nodes[].value')
-	# this remove my ip from the list
-	i1="${i[@]/$ipaddr}"
-
-	# Register the current IP in the discovery service
-	# key set to expire in 30 sec. There is a cronjob that should update them regularly
-	curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/$ipaddr/ipaddr" -XPUT -d value="$ipaddr" -d ttl=30
-	curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/$ipaddr/hostname" -XPUT -d value="$hostname" -d ttl=30
-	curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/$ipaddr" -XPUT -d ttl=30 -d dir=true -d prevExist=true
-
-	i=$(curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/?quorum=true" | jq -r '.node.nodes[]?.key' | awk -F'/' '{print $(NF)}')
-	# this remove my ip from the list
-	i2="${i[@]/$ipaddr}"
-
-	ips=$(echo $i1 $i2 | xargs -n1 | sort -u | xargs)
-
-	cluster_ips=$(join , $ips)
-
-	/usr/bin/clustercheckcron clustercheckuser clustercheckpassword! 1 /var/log/mysql/clustercheck.log 1 &
-	set -e
-fi
-
-if [ -z "$cluster_ips" ]; then
-	echo "Bootstrapping cluster"
-
-	exec "$@" --wsrep_cluster_name=$CLUSTER_NAME --wsrep_cluster_address="gcomm://" --wsrep_node_address="$ipaddr" --wsrep_sst_auth="sstuser:$PXC_SST_PASSWORD"
-else
-	echo "Joining cluster $cluster_ips"
-
-	exec "$@" --wsrep_cluster_name=$CLUSTER_NAME --wsrep_cluster_address="gcomm://$cluster_ips" --wsrep_node_address="$ipaddr" --wsrep_sst_auth="sstuser:$PXC_SST_PASSWORD"
-fi
-
+exec "$@"

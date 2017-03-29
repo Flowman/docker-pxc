@@ -1,0 +1,75 @@
+#!/bin/bash
+
+set -eo pipefail
+
+echo
+echo "Starting pxc..."
+echo
+
+if [ "$#" -eq "0" ]; then
+
+	if [ -z "$CLUSTER_NAME" ]; then
+		echo >&2 'error: you need to specify CLUSTER_NAME'
+		exit 1
+	fi
+
+	if [ -z "$DISCOVERY_SERVICE" ]; then
+		echo >&2 'error: you need to specify DISCOVERY_SERVICE'
+		exit 1
+	fi
+
+	function join { local IFS="$1"; shift; echo "$*"; }
+
+	echo 'Registering in the discovery service'
+
+	export DISCOVERY_SERVICE=$DISCOVERY_SERVICE:${DISCOVERY_SERVICE_PORT:-2379}
+	# wait for etcd to respond before continuing
+	until $(curl -sfo /dev/null "http://$DISCOVERY_SERVICE/health"); do
+	    echo '.'
+	    sleep 5
+	done
+
+	# set my ip address
+	ipaddr=$(hostname -i | awk ' { print $1 } ')
+
+	# register my ip in the start up queue
+	curl -sSo /dev/null "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/queue/$CLUSTER_NAME" -XPOST -d value=$ipaddr -d ttl=60
+	# get list of IP from start up queue
+	i=$(curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/queue/$CLUSTER_NAME" | jq -r '.node.nodes[].value')
+	# remove my ip from the list
+	i1="${i//$ipaddr}"
+
+	# check for working cluster node(s) in etcd
+	i=$(curl -sS "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/?quorum=true" | jq -r '.node.nodes[]?.key' | awk -F'/' '{print $(NF)}')
+	# remove my ip from the list
+	i2="${i//$ipaddr}"
+
+	# create a comma separated list of ips
+	node_ips=$(join , $(echo $i1 $i2 | xargs -n1 | sort -u | xargs))
+
+	# start the cluster check, this updates etcd with healty nodes
+	/usr/bin/clustercheckcron clustercheckuser clustercheckpassword! 1 /var/log/mysql/clustercheck.log 1 &
+
+	# set mysqld exec parameters
+	if [ -z "$node_ips" ]; then
+		echo "Bootstrapping cluster"
+
+		set -- mysqld --wsrep_cluster_name=$CLUSTER_NAME --wsrep_cluster_address="gcomm://" --wsrep_node_address="$ipaddr" --wsrep_sst_auth="sstuser:$PXC_SST_PASSWORD"
+	else
+		echo "Joining cluster $node_ips"
+
+		# wait for working cluster node(s)
+		while [ -z "$i" ]; do
+			i=$(curl -sf "http://$DISCOVERY_SERVICE/v2/keys/pxc-cluster/$CLUSTER_NAME/?quorum=true" | jq -r '.node.nodes[]?.key' | awk -F'/' '{print $(NF)}')
+		    echo '.'
+		    sleep 5
+		done
+
+		set -- mysqld --wsrep_cluster_name=$CLUSTER_NAME --wsrep_cluster_address="gcomm://$node_ips" --wsrep_node_address="$ipaddr" --wsrep_sst_auth="sstuser:$PXC_SST_PASSWORD"
+		# skip mysqld initialize as we have a cluster to join
+		export CLUSTER_JOIN=true
+	fi
+
+fi
+
+exec /docker-entrypoint.sh "$@"

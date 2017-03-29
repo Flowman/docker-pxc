@@ -8,6 +8,7 @@ RUN \
     && echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories \
     && apk add --update \
         curl \
+        bash \
         jq \
         pwgen \
         gosu@testing \
@@ -28,7 +29,7 @@ RUN \
     && rm -rf /tmp/* \
 
     && mkdir -p /opt/rancher \
-    && curl -SL https://github.com/cloudnautique/giddyup/releases/download/v0.14.0/giddyup -o /opt/rancher/giddyup \
+    && curl -SL https://github.com/rancher/giddyup/releases/download/v0.15.0/giddyup -o /opt/rancher/giddyup \
     && chmod +x /opt/rancher/giddyup \
 
     && sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/my.cnf \
@@ -36,13 +37,10 @@ RUN \
     && mv /tmp/my.cnf /etc/mysql/my.cnf
 
 COPY ./start_pxc /opt/rancher
+COPY ./start_etcd /opt/rancher
 COPY ./node.cnf /etc/mysql/conf.d
 COPY ./docker-entrypoint.sh /
 COPY ./clustercheckcron /usr/bin/clustercheckcron
-
-RUN \
-    chmod a+x /docker-entrypoint.sh \
-    && chmod a+x /usr/bin/clustercheckcron
 
 VOLUME ["/var/lib/mysql", "/run/mysqld", "/etc/mysql/conf.d", "/etc/mysql/percona-xtradb-cluster.conf.d"]
 
