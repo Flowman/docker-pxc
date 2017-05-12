@@ -1,4 +1,5 @@
-FROM alpine:3.5
+# we need to use edge as the asio-dev is required for galera
+FROM alpine:edge
 
 MAINTAINER Peter Szalatnay <theotherland@gmail.com>
 
