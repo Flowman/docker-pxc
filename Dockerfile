@@ -34,6 +34,8 @@ RUN \
     && chmod +x /opt/rancher/giddyup \
 
     && sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/my.cnf \
+    && sed -Ei "s/key_buffer/key_buffer_size/g" /etc/mysql/my.cnf \
+    && sed -Ei "s/myisam-recover/myisam-recover-options/g" /etc/mysql/my.cnf \
     && printf 'skip-host-cache\nskip-name-resolve\n' | awk '{ print } $1 == "[mysqld]" && c == 0 { c = 1; system("cat") }' /etc/mysql/my.cnf > /tmp/my.cnf \
     && mv /tmp/my.cnf /etc/mysql/my.cnf
 
