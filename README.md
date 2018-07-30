@@ -1,4 +1,4 @@
-[![](https://images.microbadger.com/badges/image/flowman/percona-xtradb-cluster:5.7.22-alpine.svg)](https://microbadger.com/images/flowman/percona-xtradb-cluster:5.7.22-alpine2 "Get your own image badge on microbadger.com")
+[![](https://images.microbadger.com/badges/image/flowman/percona-xtradb-cluster:5.7.22-alpine.svg)](https://microbadger.com/images/flowman/percona-xtradb-cluster:5.7.22-alpine "Get your own image badge on microbadger.com")
 
 # What is Percona XtraDB Cluster?
 
