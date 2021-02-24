@@ -1,38 +1,50 @@
-FROM alpine:3.6
+FROM alpine:3.13.2
 
 MAINTAINER Peter Szalatnay <theotherland@gmail.com>
 
-RUN addgroup -S mysql \
-    && adduser -D -S -h /var/cache/mysql -s /sbin/nologin -G mysql mysql \
-    && echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories \
-    && apk add --update \
+ENV PXC_VERSION 8.0.21-12.1
+
+RUN set -eux; \
+    addgroup -S mysql; \
+    adduser -D -S -h /var/lib/mysql -s /sbin/nologin -G mysql mysql; \
+    apk add --update --no-cache \
         curl \
         bash \
-        pwgen \
-        gosu@testing \
-    && cd /tmp \
-    && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.24-31.33/percona-xtradb-cluster-common-5.7.24-r0.apk" -o "percona-xtradb-cluster-common-5.7.24-r0.apk" \
-    && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.24-31.33/percona-xtradb-cluster-server-5.7.24-r0.apk" -o "percona-xtradb-cluster-server-5.7.24-r0.apk" \
-    && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.24-31.33/percona-xtradb-cluster-client-5.7.24-r0.apk" -o "percona-xtradb-cluster-client-5.7.24-r0.apk" \
-    && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.24-31.33/percona-xtradb-cluster-galera-5.7.24-r0.apk" -o "percona-xtradb-cluster-galera-5.7.24-r0.apk" \
-    && curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/5.7.24-31.33/percona-xtrabackup-2.4.13-r0.apk" -o "percona-xtrabackup-2.4.13-r0.apk" \
-    && apk add --allow-untrusted \
-        percona-xtradb-cluster-common-5.7.24-r0.apk \
-        percona-xtradb-cluster-client-5.7.24-r0.apk \
-        percona-xtradb-cluster-galera-5.7.24-r0.apk \
-        percona-xtrabackup-2.4.13-r0.apk \
-        percona-xtradb-cluster-server-5.7.24-r0.apk \
-    && mv /etc/mysql/percona-xtradb-cluster.conf.d/wsrep.cnf /etc/mysql/percona-xtradb-cluster.conf.d/wsrep.old \
-    && rm -rf /tmp/*
+        libpwquality \
+        tzdata; \
+    cd /tmp; \
+    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/$PXC_VERSION/percona-xtradb-cluster-client-8.0.21-r0.apk" -o "percona-xtradb-cluster-client-8.0.21-r0.apk"; \
+    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/$PXC_VERSION/percona-xtradb-cluster-common-8.0.21-r0.apk" -o "percona-xtradb-cluster-common-8.0.21-r0.apk"; \
+    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/$PXC_VERSION/percona-xtradb-cluster-8.0.21-r0.apk" -o "percona-xtradb-cluster-8.0.21-r0.apk"; \
+    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/$PXC_VERSION/percona-xtrabackup-8.0.22-r0.apk" -o "percona-xtrabackup-8.0.22-r0.apk"; \
+    apk add --allow-untrusted --no-cache \
+        percona-xtradb-cluster-client-8.0.21-r0.apk \
+        percona-xtradb-cluster-common-8.0.21-r0.apk \
+        percona-xtradb-cluster-8.0.21-r0.apk \
+        percona-xtrabackup-8.0.22-r0.apk; \
+    rm /tmp/percona*;
 
-VOLUME ["/var/lib/mysql", "/run/mysqld", "/etc/mysql/conf.d", "/etc/mysql/percona-xtradb-cluster.conf.d"]
+RUN rm -rf /etc/mysql/mysql.conf.d; \
+    rm -f /etc/mysql/*.cnf*; \
+    ln -s /etc/mysql/conf.d /etc/my.cnf.d; \
+    rm -f /etc/percona-xtradb-cluster.conf.d/*.cnf; \
+    echo '!include /etc/mysql/node.cnf' > /etc/my.cnf; \
+    echo '!includedir /etc/my.cnf.d/' >> /etc/my.cnf; \
+    echo '!includedir /etc/percona-xtradb-cluster.conf.d/' >> /etc/my.cnf;
 
-COPY ./docker-entrypoint.sh /
+COPY dockerdir /
+RUN mkdir -p /etc/mysql/conf.d/ /var/log/mysql /var/lib/mysql /docker-entrypoint-initdb.d /etc/percona-xtradb-cluster.conf.d; \
+    chown -R mysql:mysql /etc/mysql/ /var/log/mysql /var/lib/mysql /docker-entrypoint-initdb.d /etc/percona-xtradb-cluster.conf.d; \
+    chmod -R g=u /etc/mysql/ /var/log/mysql /var/lib/mysql /docker-entrypoint-initdb.d /etc/percona-xtradb-cluster.conf.d
 
-RUN chmod +x /docker-entrypoint.sh
+VOLUME ["/var/lib/mysql", "/run/mysqld"]
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+RUN chmod +x /entrypoint.sh
 
-EXPOSE 3306 4444 4567 4568
+ENTRYPOINT ["/entrypoint.sh"]
+
+USER mysql
+
+EXPOSE 3306 4567 4568 33060
 
 CMD ["mysqld"]
