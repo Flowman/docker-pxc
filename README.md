@@ -1,5 +1,3 @@
-[![](https://images.microbadger.com/badges/image/flowman/percona-xtradb-cluster:8.0.21-alpine.svg)](https://microbadger.com/images/flowman/percona-xtradb-cluster:8.0.21-alpine "Get your own image badge on microbadger.com")
-
 # What is Percona XtraDB Cluster?
 
 Percona XtraDB Cluster is High Availability and Scalability solution for MySQL Users. Percona XtraDB Cluster provides: Synchronous replication. Transaction either committed on all nodes or none. Multi-master replication.
