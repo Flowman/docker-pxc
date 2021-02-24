@@ -1,8 +1,10 @@
 FROM alpine:3.13.2
 
-MAINTAINER Peter Szalatnay <theotherland@gmail.com>
+LABEL maintainer="Peter Szalatnay <theotherland@gmail.com>"
 
-ENV PXC_VERSION 8.0.21-12.1
+ENV PXC_VERSION 8.0.21
+ENV PKG_RELEASE 12.1
+ENV XTRABACKUP_VERSION 8.0.22
 
 RUN set -eux; \
     addgroup -S mysql; \
@@ -13,15 +15,15 @@ RUN set -eux; \
         libpwquality \
         tzdata; \
     cd /tmp; \
-    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/$PXC_VERSION/percona-xtradb-cluster-client-8.0.21-r0.apk" -o "percona-xtradb-cluster-client-8.0.21-r0.apk"; \
-    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/$PXC_VERSION/percona-xtradb-cluster-common-8.0.21-r0.apk" -o "percona-xtradb-cluster-common-8.0.21-r0.apk"; \
-    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/$PXC_VERSION/percona-xtradb-cluster-8.0.21-r0.apk" -o "percona-xtradb-cluster-8.0.21-r0.apk"; \
-    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/$PXC_VERSION/percona-xtrabackup-8.0.22-r0.apk" -o "percona-xtrabackup-8.0.22-r0.apk"; \
+    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/${PXC_VERSION}-${PKG_RELEASE}/percona-xtradb-cluster-client-${PXC_VERSION}-r0.apk" -o "percona-xtradb-cluster-client-${PXC_VERSION}-r0.apk"; \
+    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/${PXC_VERSION}-${PKG_RELEASE}/percona-xtradb-cluster-common-${PXC_VERSION}-r0.apk" -o "percona-xtradb-cluster-common-${PXC_VERSION}-r0.apk"; \
+    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/${PXC_VERSION}-${PKG_RELEASE}/percona-xtradb-cluster-${PXC_VERSION}-r0.apk" -o "percona-xtradb-cluster-${PXC_VERSION}-r0.apk"; \
+    curl -fSL "https://github.com/Flowman/pxc-alpine/releases/download/${PXC_VERSION}-${PKG_RELEASE}/percona-xtrabackup-${XTRABACKUP_VERSION}-r0.apk" -o "percona-xtrabackup-${XTRABACKUP_VERSION}-r0.apk"; \
     apk add --allow-untrusted --no-cache \
-        percona-xtradb-cluster-client-8.0.21-r0.apk \
-        percona-xtradb-cluster-common-8.0.21-r0.apk \
-        percona-xtradb-cluster-8.0.21-r0.apk \
-        percona-xtrabackup-8.0.22-r0.apk; \
+        percona-xtradb-cluster-client-${PXC_VERSION}-r0.apk \
+        percona-xtradb-cluster-common-${PXC_VERSION}-r0.apk \
+        percona-xtradb-cluster-${PXC_VERSION}-r0.apk \
+        percona-xtrabackup-${XTRABACKUP_VERSION}-r0.apk; \
     rm /tmp/percona*;
 
 RUN rm -rf /etc/mysql/mysql.conf.d; \
